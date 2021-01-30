@@ -1,0 +1,36 @@
+name: Heroku Deployment for the java 8 fat jar web application
+
+on:
+  workflow_dispatch:
+    inputs:
+      sourceCodeGitRepo: 
+        description: Git repo for the java webapp fat jar application
+        required: true
+        default: https://github.com/himanshumps/vertx-starter.git
+      herokuProjectName:
+        description: Heroku project name where the application needs to be deployed
+        required: true
+        default: vertxdemo23170
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install heroku toolchain
+      run: sudo snap install --classic heroku
+    - name: Update podman
+      run: sudo apt-get install podman
+    - name: Check heroku version and login
+      env:
+        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      run: heroku --version && heroku container:login
+    - name: Build the docker image using s2i light with podman
+      run: chmod 777 s2i-light.sh && ./s2i-light.sh build ${{ github.event.inputs.sourceCodeGitRepo }} registry.hub.docker.com/himanshumps/ubi_java8 registry.heroku.com/${{ github.event.inputs.herokuProjectName }}/web -v $(pwd)/maven/:/tmp/maven/settings/:Z
+    - name: Login into heroku registry
+      run: podman login --username=${{ secrets.HEROKU_EMAIL }} --password=${{ secrets.HEROKU_API_KEY }} registry.heroku.com
+    - name: Push the image to heroku registry
+      run: podman push --format=v2s2 docker://registry.heroku.com/${{ github.event.inputs.herokuProjectName }}/web
+    - name: Heroku release the pushed image
+      env:
+        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      run: heroku container:release web -a ${{ github.event.inputs.herokuProjectName }} 
